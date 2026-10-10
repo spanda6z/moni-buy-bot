@@ -316,7 +316,7 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
 
   const caption = `
 ${isWhale ? '🐳' : '🆕'} | $moin BUY!${isWhale ? ' 🐋' : ''}
-by @MajorBuyBot
+by @monibuy_bot
 
 🎩🎩🎩🎩🎩🎩🎩🎩🎩🎩🎩
 
@@ -326,9 +326,7 @@ by @MajorBuyBot
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
-💵 Wallet Balance: $${formatNumber(solBalanceUsd)}
-
-${emojis}
+${isWhale ? `💎 Whale Wallet Balance: ${formatNumber(solBalanceUsd)}\n\n` : ''}${emojis}
   `.trim();
 
   const keyboard = Markup.inlineKeyboard([[
