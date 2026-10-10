@@ -7,12 +7,13 @@ const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(telegramToken || '000000000:INVALID_TOKEN');
 
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
-const SOLANA_RPC = process.env.SOLANA_RPC || (
-  HELIUS_API_KEY
-    ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
-    : 'https://api.mainnet-beta.solana.com'
-);
-const connection = new Connection(SOLANA_RPC, 'confirmed');
+const HELIUS_RPC = HELIUS_API_KEY
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : null;
+const PUBLIC_RPC = 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPC = process.env.SOLANA_RPC || HELIUS_RPC || PUBLIC_RPC;
+let connection = new Connection(SOLANA_RPC, 'confirmed');
+let activeRpcName = SOLANA_RPC === HELIUS_RPC ? 'Helius' : (SOLANA_RPC === PUBLIC_RPC ? 'Public Solana RPC' : 'Custom SOLANA_RPC');
 
 const MOIN_MINT = '8DXqVUopcdviLvujTcpwEqkKzB43Arp6E1axzsEE5Btq';
 const CHART_URL = `https://dexscreener.com/solana/${MOIN_MINT}`;
@@ -119,7 +120,7 @@ async function checkBuys() {
 async function start() {
   console.log('Solana $moin Buy Bot starting');
   console.log(`Whale rule: wallet SOL balance ≥ $${WHALE_SOL_USD}`);
-  console.log(`Solana RPC provider: ${HELIUS_API_KEY ? 'Helius' : (process.env.SOLANA_RPC ? 'Custom SOLANA_RPC' : 'Public Solana RPC fallback')}`);
+  console.log(`Solana RPC provider: ${activeRpcName}`);
 
   if (!telegramToken || !process.env.TELEGRAM_CHAT_ID) {
     console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Set both in your hosting provider environment variables.');
@@ -139,8 +140,24 @@ async function start() {
     await connection.getLatestBlockhash('confirmed');
     console.log('Solana RPC connection successful');
   } catch (err) {
-    console.error('Solana RPC connection failed:', err.message);
-    process.exit(1);
+    console.error(`${activeRpcName} RPC failed:`, err.message);
+    const canFallback = activeRpcName === 'Helius' && !process.env.SOLANA_RPC;
+    if (!canFallback) {
+      console.error('Check your RPC URL/API key and provider quota, then redeploy.');
+      process.exit(1);
+    }
+
+    console.warn('Helius may be rate-limited or out of quota. Trying public Solana RPC as a fallback...');
+    connection = new Connection(PUBLIC_RPC, 'confirmed');
+    activeRpcName = 'Public Solana RPC fallback';
+    try {
+      await connection.getLatestBlockhash('confirmed');
+      console.log('Public Solana RPC fallback connected successfully');
+    } catch (fallbackErr) {
+      console.error('Public RPC fallback also failed:', fallbackErr.message);
+      console.error('Check Helius quota or wait for the quota reset. Public RPC has its own rate limits.');
+      process.exit(1);
+    }
   }
 
   await updatePrices();
