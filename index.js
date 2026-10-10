@@ -85,7 +85,7 @@ bot.help(async (ctx) => {
 
 bot.command('setminbuy', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const amount = Number((ctx.message.text || '').split(/\\s+/)[1]);
+  const amount = Number((ctx.message.text || '').split(/\s+/)[1]);
   if (!Number.isFinite(amount) || amount < 0) {
     await ctx.reply('Usage: /setminbuy <USD>\nExample: /setminbuy 5');
     return;
@@ -97,8 +97,8 @@ bot.command('setminbuy', async (ctx) => {
 
 bot.command('setbuyimage', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const url = (ctx.message.text || '').trim().split(/\\s+/).slice(1).join(' ');
-  if (!/^https?:\\/\\//i.test(url)) {
+  const url = (ctx.message.text || '').trim().split(/\s+/).slice(1).join(' ');
+  if (!/^https?:\/\//i.test(url)) {
     await ctx.reply('Usage: /setbuyimage <https://image-url>');
     return;
   }
@@ -110,8 +110,8 @@ bot.command('setbuyimage', async (ctx) => {
 
 bot.command('setbuyvideo', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const url = (ctx.message.text || '').trim().split(/\\s+/).slice(1).join(' ');
-  if (!/^https?:\\/\\//i.test(url)) {
+  const url = (ctx.message.text || '').trim().split(/\s+/).slice(1).join(' ');
+  if (!/^https?:\/\//i.test(url)) {
     await ctx.reply('Usage: /setbuyvideo <https://video-url>');
     return;
   }
