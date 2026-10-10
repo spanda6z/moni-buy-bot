@@ -283,19 +283,30 @@ async function start() {
     }
   }
 
-  try {
-    await bot.launch();
-    console.log('Telegram bot online - ready for Railway. Commands: /start /help /ping /status /price');
-  } catch (err) {
-    console.error('Telegram bot failed to launch:', err.response?.description || err.message);
-    process.exit(1);
-  }
-
-  // Refresh market data after Telegram polling is running so a slow price API
-  // cannot prevent the bot from starting or responding to Telegram messages.
+  // Start market-data refresh independently of Telegram polling. This ensures
+  // prices still load while Telegram polling is recovering from a transient conflict.
   updatePrices().catch((err) => console.error('Initial price update failed:', err.message));
   setInterval(() => updatePrices().catch((err) => console.error('Price update failed:', err.message)), 60_000);
   setInterval(checkBuys, 15_000);
+
+  // Railway can briefly overlap old/new containers during deployment. Retry a
+  // Telegram polling conflict instead of crashing into a restart loop.
+  while (true) {
+    try {
+      await bot.launch();
+      console.log('Telegram bot online - ready for Railway. Commands: /start /help /ping /status /price');
+      break;
+    } catch (err) {
+      const description = err.response?.description || err.message;
+      console.error('Telegram bot failed to launch:', description);
+      if (/Conflict: terminated by other getUpdates request/i.test(description)) {
+        console.warn('Telegram polling conflict detected; retrying in 15 seconds. Ensure no other copy uses this bot token.');
+        await new Promise((resolve) => setTimeout(resolve, 15_000));
+        continue;
+      }
+      process.exit(1);
+    }
+  }
 }
 
 start().catch((err) => {
