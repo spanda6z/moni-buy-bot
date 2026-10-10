@@ -3,16 +3,17 @@ const { Telegraf, Markup } = require('telegraf');
 const { Connection, PublicKey, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const fetch = require('node-fetch');
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
+const bot = new Telegraf(telegramToken || '000000000:INVALID_TOKEN');
 const connection = new Connection(process.env.SOLANA_RPC || 'https://api.mainnet-beta.solana.com', 'confirmed');
 
 const MOIN_MINT = '8DXqVUopcdviLvujTcpwEqkKzB43Arp6E1axzsEE5Btq';
 const CHART_URL = `https://dexscreener.com/solana/${MOIN_MINT}`;
 const BUY_URL = `https://pump.fun/coin/${MOIN_MINT}`;
-const TG_URL = 'https://t.me/moincoinfun'; // update if needed
+const TG_URL = 'https://t.me/moincoinfun';
 
 let lastSignature = null;
-let solPrice = 150; // fallback
+let solPrice = 150;
 let moinPrice = 0.0003;
 let mcap = 300000;
 
@@ -21,12 +22,10 @@ const MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
 
 async function updatePrices() {
   try {
-    // SOL price
     const solRes = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
     const solJson = await solRes.json();
     solPrice = solJson.solana?.usd || solPrice;
 
-    // MOIN price + mcap from DexScreener
     const dsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${MOIN_MINT}`);
     const dsJson = await dsRes.json();
     const pair = dsJson.pairs?.[0];
@@ -35,7 +34,7 @@ async function updatePrices() {
       mcap = parseFloat(pair.fdv) || parseFloat(pair.marketCap) || mcap;
     }
   } catch (e) {
-    console.log('Price update failed');
+    console.log('Price update failed:', e.message);
   }
 }
 
@@ -49,8 +48,7 @@ async function getSolBalanceUsd(walletAddress) {
   try {
     const pubkey = new PublicKey(walletAddress);
     const balanceLamports = await connection.getBalance(pubkey);
-    const sol = balanceLamports / LAMPORTS_PER_SOL;
-    return sol * solPrice;
+    return (balanceLamports / LAMPORTS_PER_SOL) * solPrice;
   } catch {
     return 0;
   }
@@ -86,12 +84,10 @@ by @MajorBuyBot
 ${emojis}
   `.trim();
 
-  const keyboard = Markup.inlineKeyboard([
-    [
-      Markup.button.url('📊 Chart', CHART_URL),
-      Markup.button.url('💲 Buy', BUY_URL),
-    ],
-  ]);
+  const keyboard = Markup.inlineKeyboard([[
+    Markup.button.url('📊 Chart', CHART_URL),
+    Markup.button.url('💲 Buy', BUY_URL),
+  ]]);
 
   await bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, caption, {
     parse_mode: 'Markdown',
@@ -100,46 +96,54 @@ ${emojis}
   });
 }
 
-// Simple polling using DexScreener recent trades (reliable + free)
 async function checkBuys() {
   try {
     const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${MOIN_MINT}`);
     const json = await res.json();
     const pair = json.pairs?.[0];
     if (!pair || !pair.txns) return;
-
-    // DexScreener doesn't give full tx history easily, so we use a lightweight approach:
-    // For production we recommend Helius webhooks.
-    // This version checks price movement + can be extended.
-
-    // Placeholder: in real use we would track last known volume or use Helius.
-    // For now we log that the bot is alive and prices are updating.
+    // DexScreener's token endpoint does not provide a complete transaction feed.
+    // Use a Solana transaction provider/webhook to implement real buy detection.
   } catch (err) {
     console.error('Check error:', err.message);
   }
 }
 
 async function start() {
-  console.log('Solana $moin Buy Bot started');
+  console.log('Solana $moin Buy Bot starting');
   console.log(`Whale rule: wallet SOL balance ≥ $${WHALE_SOL_USD}`);
 
-  if (!process.env.TELEGRAM_BOT_TOKEN || !process.env.TELEGRAM_CHAT_ID) {
-    console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID');
+  if (!telegramToken || !process.env.TELEGRAM_CHAT_ID) {
+    console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Set both in your hosting provider environment variables.');
+    process.exit(1);
+  }
+
+  try {
+    await bot.telegram.getMe();
+  } catch (err) {
+    console.error('Telegram authentication failed. TELEGRAM_BOT_TOKEN is invalid or revoked.');
+    console.error('Create/check the token with @BotFather, update TELEGRAM_BOT_TOKEN in Railway Variables, then redeploy.');
+    console.error('Telegram API response:', err.response?.description || err.message);
     process.exit(1);
   }
 
   await updatePrices();
   setInterval(updatePrices, 60_000);
-
-  // Note: Full real-time buy detection on Solana needs Helius or similar.
-  // This bot is structured for easy upgrade to webhooks.
   setInterval(checkBuys, 15_000);
 
-  bot.launch();
-  console.log('Telegram bot online - ready for Railway');
+  try {
+    await bot.launch();
+    console.log('Telegram bot online - ready for Railway');
+  } catch (err) {
+    console.error('Telegram bot failed to launch:', err.response?.description || err.message);
+    process.exit(1);
+  }
 }
 
-start();
+start().catch((err) => {
+  console.error('Startup failed:', err.message);
+  process.exit(1);
+});
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
