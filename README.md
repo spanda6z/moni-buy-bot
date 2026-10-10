@@ -1,8 +1,8 @@
-# MONI Buy Bot (Monad) – Frog Style + Real Whale Detection
+# MONI Buy Bot (Monad)
 
 Telegram buy bot for **$MONI** on Monad.
 
-**Whale definition**: Wallet that holds **more than $20,000** of $MONI (not just a big single buy).
+**Whale rule**: Any wallet that buys $MONI and already holds **more than 25,000,000 MONI** is announced as a 🐋 WHALE.
 
 ## Sample
 
@@ -15,8 +15,8 @@ by @MONIBuyBot
 🔷 ≈ $38.57
 🪙 MONI 133,640 (Tx)
 🔎 Wallet: 0xAb12...Cd34
-💰 Holdings: $24.8K
-📈 MCap: $280K
+💰 Holdings: 28.4M MONI
+📈 MCap: $14.2K
 📣 Socials: 𝗧𝗴
 
 🐸🐸🐸🐸🐸🐸 🐋 WHALE WALLET
@@ -31,22 +31,10 @@ npm install
 cp .env.example .env
 ```
 
-```env
-TELEGRAM_BOT_TOKEN=...
-TELEGRAM_CHAT_ID=-100...
-MIN_BUY_USD=5
-WHALE_HOLDINGS_USD=20000
-```
-
-Optional: put Pepe video as `buy.mp4`
+Edit `.env` with your bot token + chat ID, then:
 
 ```bash
 npm start
 ```
 
-## Features
-- Frog emoji style 🐸
-- Real whale detection (wallet holdings ≥ $20k)
-- Shows current holdings of the buyer
-- Chart + Buy buttons
-- Optional Pepe GIF
+Optional: put the Pepe video as `buy.mp4`
