@@ -364,20 +364,20 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
     caption = `
 ${title}
 
-🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖
+━━━━━━━━━━━━━━
 
 ➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 ⬅️ MOIN: ${formatNumber(tokensReceived)}
 👤 Buyer: [${short}](${walletLink}) / [Txn](${txLink})
 📈 Market cap: $${formatNumber(mcap)}
 📣 Socials: [Telegram](${TG_URL})
-${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n` : ''}${emojis}
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n` : ''}${buyBadge}
     `.trim();
   } else if (botSettings.alertType === 'whale') {
     caption = `
 ${title}
 
-🚀🚀🚀🚀🚀🚀🚀🚀
+━━━━━━━━━━━━━━
 
 ➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 ⬅️ MOIN: ${formatNumber(tokensReceived)}
@@ -389,7 +389,7 @@ ${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐋🐋🐋�
     caption = `
 ${title}
 
-🐸👍 🐸👍
+━━━━━━━━━━━━━━
 
 🔷 SOL ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 🪙 MOIN ${formatNumber(tokensReceived)} ([Tx](${txLink}))
@@ -397,7 +397,7 @@ ${title}
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
-${emojis}${isWhale ? `\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
+${buyBadge}${isWhale ? `\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
     `.trim();
   }
 
