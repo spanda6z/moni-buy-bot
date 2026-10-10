@@ -1,10 +1,10 @@
-# MONI Buy Bot (Monad) – Frog Style
+# MONI Buy Bot (Monad) – Frog Style + Real Whale Detection
 
-Telegram buy bot for **$MONI** on Monad with frog emoji + whale alerts.
+Telegram buy bot for **$MONI** on Monad.
 
-Style inspired by MajorBuyBot / popular Solana buy bots.
+**Whale definition**: Wallet that holds **more than $20,000** of $MONI (not just a big single buy).
 
-## Sample Notification
+## Sample
 
 ```
 🆕 | $MONI BUY! 🐋
@@ -12,16 +12,15 @@ by @MONIBuyBot
 
 🐸👍 🐸👍 🐸👍
 
-🔷 MON ≈ $38.57
-🪙 MONI 133,640 ([Tx](...))
-🔎 Wallet: [0xAb12...Cd34](...)
+🔷 ≈ $38.57
+🪙 MONI 133,640 (Tx)
+🔎 Wallet: 0xAb12...Cd34
+💰 Holdings: $24.8K
 📈 MCap: $280K
 📣 Socials: 𝗧𝗴
 
-🐸🐸🐸🐸 ⚡ WHALE ALERT
+🐸🐸🐸🐸🐸🐸 🐋 WHALE WALLET
 ```
-
-+ Chart & Buy buttons
 
 ## Setup
 
@@ -32,16 +31,14 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env`:
-
 ```env
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=-100...
 MIN_BUY_USD=5
-WHALE_USD=100
+WHALE_HOLDINGS_USD=20000
 ```
 
-Optional: put the Pepe video as `buy.mp4` in the folder.
+Optional: put Pepe video as `buy.mp4`
 
 ```bash
 npm start
@@ -49,8 +46,7 @@ npm start
 
 ## Features
 - Frog emoji style 🐸
-- Whale alert when buy ≥ $WHALE_USD
-- Bigger frog spam for larger buys
-- MCap + Tx + Wallet links
+- Real whale detection (wallet holdings ≥ $20k)
+- Shows current holdings of the buyer
 - Chart + Buy buttons
 - Optional Pepe GIF

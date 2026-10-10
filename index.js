@@ -11,20 +11,21 @@ const MONI = '0x0CC9B2e2AcD7BACfF79eb7dB48F5662B622E7777';
 const POOL = '0x0198833561e4b64afa593cc3e90f446933ac2a9a';
 const CHART_URL = 'https://www.geckoterminal.com/monad/pools/0x0198833561e4b64afa593cc3e90f446933ac2a9a';
 const BUY_URL = 'https://www.monimonad.com/';
-const TG_URL = 'https://t.me/MoniOnMonad'; // update if needed
+const TG_URL = 'https://t.me/MoniOnMonad';
 
-const ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
-const contract = new ethers.Contract(MONI, ABI, provider);
+const ERC20_ABI = [
+  'event Transfer(address indexed from, address indexed to, uint256 value)',
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)'
+];
+const contract = new ethers.Contract(MONI, ERC20_ABI, provider);
 
 let lastBlock = 0;
 let price = 0.000015;
 let mcap = 0;
 
-// Pepe buy GIF (optional)
 const BUY_GIF_PATH = path.join(__dirname, 'buy.mp4');
-
-// Whale threshold in USD
-const WHALE_USD = Number(process.env.WHALE_USD || 100);
+const WHALE_HOLDINGS_USD = Number(process.env.WHALE_HOLDINGS_USD || 20000); // $20k
 
 async function getPrice() {
   try {
@@ -48,19 +49,29 @@ function formatNumber(n) {
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
-function getFrogSpam(usd) {
-  if (usd >= 500) return '🐸🐸🐸🐸🐸🐸🐸🐸🐸🐸 ⚡ WHALE';
-  if (usd >= 200) return '🐸🐸🐸🐸🐸🐸 ⚡ BIG BUY';
-  if (usd >= WHALE_USD) return '🐸🐸🐸🐸 ⚡ WHALE ALERT';
-  if (usd >= 50) return '🐸🐸🐸🐸';
-  if (usd >= 20) return '🐸🐸🐸';
+async function getHoldingsUsd(wallet) {
+  try {
+    const bal = await contract.balanceOf(wallet);
+    const amount = Number(ethers.formatUnits(bal, 18));
+    return amount * price;
+  } catch {
+    return 0;
+  }
+}
+
+function getFrogSpam(usdBuy, isWhale) {
+  if (isWhale) return '🐸🐸🐸🐸🐸🐸 🐋 WHALE WALLET';
+  if (usdBuy >= 200) return '🐸🐸🐸🐸🐸🐸 ⚡ BIG BUY';
+  if (usdBuy >= 50) return '🐸🐸🐸🐸';
+  if (usdBuy >= 20) return '🐸🐸🐸';
   return '🐸🐸';
 }
 
 async function sendBuyAlert(to, amount, usd, txHash) {
   const short = `${to.slice(0, 6)}...${to.slice(-4)}`;
-  const frogs = getFrogSpam(usd);
-  const isWhale = usd >= WHALE_USD;
+  const holdingsUsd = await getHoldingsUsd(to);
+  const isWhale = holdingsUsd >= WHALE_HOLDINGS_USD;
+  const frogs = getFrogSpam(usd, isWhale);
 
   const caption = `
 🆕 | $MONI BUY!${isWhale ? ' 🐋' : ''}
@@ -68,9 +79,10 @@ by @MONIBuyBot
 
 🐸👍 🐸👍 🐸👍
 
-🔷 MON ≈ $${usd.toFixed(2)}
+🔷 ≈ $${usd.toFixed(2)}
 🪙 MONI ${formatNumber(amount)} ([Tx](https://monadscan.com/tx/${txHash}))
 🔎 Wallet: [${short}](https://monadscan.com/address/${to})
+💰 Holdings: $${formatNumber(holdingsUsd)}
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
@@ -128,10 +140,8 @@ async function checkBuys() {
 }
 
 async function start() {
-  console.log('MONI Buy Bot started (Frog style + Whale alerts)');
-  if (fs.existsSync(BUY_GIF_PATH)) {
-    console.log('Pepe buy GIF found');
-  }
+  console.log('MONI Buy Bot started');
+  console.log(`Whale = wallet holdings ≥ $${WHALE_HOLDINGS_USD}`);
 
   await getPrice();
   setInterval(getPrice, 60_000);
