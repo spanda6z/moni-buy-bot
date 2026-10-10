@@ -357,7 +357,7 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
 
   const txLink = `https://solscan.io/tx/${txSignature}`;
   const walletLink = `https://solscan.io/account/${safeBuyer}`;
-  const title = `${isWhale ? '🐳' : '🆕'} | $MOIN BUY! ${isWhale ? '🐋' : ''}\nby @monibuy\\_bot`;
+  const title = `${isWhale ? '🐳' : '🐸💚'} *$MOIN BUY!*\\nby @monibuy\\\\_bot`;
   let caption;
 
   if (botSettings.alertType === 'detailed') {
@@ -382,7 +382,7 @@ ${title}
 ➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 ⬅️ MOIN: ${formatNumber(tokensReceived)}
 👤 [Buyer](${walletLink}) / [Txn](${txLink})
-${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐋🐋🐋🐋🐋\n` : ''}📈 Marketcap: $${formatNumber(mcap)}
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐳 WHALE BUY\n` : ''}📈 Marketcap: $${formatNumber(mcap)}
 📣 [Telegram](${TG_URL})
     `.trim();
   } else {
