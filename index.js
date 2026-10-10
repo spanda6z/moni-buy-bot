@@ -86,13 +86,37 @@ async function updatePrices() {
     console.error('SOL price update failed:', e.message);
   }
 
+  // Fallback SOL/USD source: use a liquid wrapped-SOL stablecoin market if CoinGecko fails.
+  if (solPrice == null) {
+    try {
+      const solRes = await fetch('https://api.dexscreener.com/token-pairs/v1/solana/So11111111111111111111111111111111111111112', { timeout: 12000 });
+      if (!solRes.ok) throw new Error(`DexScreener SOL HTTP ${solRes.status}`);
+      const solJson = await solRes.json();
+      const solPairs = Array.isArray(solJson) ? solJson : (Array.isArray(solJson.pairs) ? solJson.pairs : []);
+      const stableQuotes = solPairs.filter((pair) =>
+        pair.chainId === 'solana' && pair.baseToken && pair.baseToken.address === 'So11111111111111111111111111111111111111112' &&
+        pair.quoteToken && /^(USDC|USDT)$/i.test(String(pair.quoteToken.symbol || '')) &&
+        Number.isFinite(Number(pair.priceUsd)) && Number(pair.priceUsd) > 0
+      ).sort((a, b) => Number((b.liquidity && b.liquidity.usd) || 0) - Number((a.liquidity && a.liquidity.usd) || 0));
+      if (stableQuotes[0]) {
+        solPrice = Number(stableQuotes[0].priceUsd);
+        solPriceUpdatedAt = Date.now();
+        console.log(`SOL/USD fallback loaded from DexScreener (${stableQuotes[0].dexId || 'Solana pair'})`);
+      } else {
+        console.error('SOL fallback failed: no SOL/stablecoin pair with a valid USD price');
+      }
+    } catch (e) {
+      console.error('SOL fallback failed:', e.message);
+    }
+  }
+
   // Select a real Solana market where MOIN is the base token. The old code
   // blindly used pairs[0], which may be a different/illiquid market.
   try {
-    const dsRes = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${MOIN_MINT}`);
-    if (!dsRes.ok) throw new Error(`DexScreener HTTP ${dsRes.status}`);
+    const dsRes = await fetch(`https://api.dexscreener.com/token-pairs/v1/solana/${MOIN_MINT}`, { timeout: 12000 });
+    if (!dsRes.ok) throw new Error(`DexScreener MOIN HTTP ${dsRes.status}`);
     const dsJson = await dsRes.json();
-    const pairs = Array.isArray(dsJson.pairs) ? dsJson.pairs : [];
+    const pairs = Array.isArray(dsJson) ? dsJson : (Array.isArray(dsJson.pairs) ? dsJson.pairs : []);
     const validPairs = pairs.filter((pair) =>
       pair.chainId === 'solana' &&
       pair.baseToken && pair.baseToken.address === MOIN_MINT &&
