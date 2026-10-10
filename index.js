@@ -53,8 +53,8 @@ bot.command('status', async (ctx) => {
 });
 
 bot.command('price', async (ctx) => {
-  await ctx.reply(`📈 $moin price: ${formatTokenPrice(moinPrice)}\nMarket cap/FDV: ${mcap == null ? 'Unavailable' : '
-
+  await ctx.reply(`📈 $moin price: ${formatTokenPrice(moinPrice)}\nMarket cap/FDV: ${mcap == null ? 'Unavailable' : '$' + formatNumber(mcap)}\nSOL price: ${formatUsd(solPrice)}\nUpdated: ${ageLabel(moinPriceUpdatedAt)}\nSource: ${marketDataSource}\n\nChart: ${CHART_URL}`);
+});
 bot.on('text', async (ctx) => {
   const text = ctx.message.text || '';
   if (!text.startsWith('/')) {
@@ -131,12 +131,28 @@ async function updatePrices() {
 }
 
 function formatUsd(value) {
-  return Number.isFinite(value) && value > 0 ? '
+  return Number.isFinite(value) && value > 0 ? '$' + value.toLocaleString('en-US', { maximumFractionDigits: 4 }) : 'Unavailable';
+}
+
+function formatTokenPrice(value) {
+  if (!Number.isFinite(value) || value <= 0) return 'Unavailable';
+  return '$' + value.toLocaleString('en-US', { maximumSignificantDigits: 8, maximumFractionDigits: 12 });
+}
+
+function ageLabel(timestamp) {
+  if (!timestamp) return 'not available yet';
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return 'updated just now';
+  if (seconds < 3600) return `updated ${Math.floor(seconds / 60)} min ago`;
+  return `updated ${Math.floor(seconds / 3600)} hr ago`;
+}
+
+function formatNumber(n) {
+  if (!Number.isFinite(n) || n <= 0) return 'Unavailable';
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
-
 async function getSolBalanceUsd(walletAddress) {
   try {
     const pubkey = new PublicKey(walletAddress);
