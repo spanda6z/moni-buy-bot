@@ -340,11 +340,11 @@ async function getSolBalanceUsd(walletAddress) {
   }
 }
 
-function getEmojiSpam(isWhale, usdBuy) {
-  if (isWhale) return '🐳🐳🐳🐳🐳🐳🐳🐳 🐋 WHALE';
-  if (usdBuy >= 100) return '🐸🐸🐸🐸🐸🐸 ⚡ BIG BUY';
-  if (usdBuy >= 30) return '🐸🐸🐸🐸';
-  return '🐸🐸';
+function getBuyBadge(isWhale, usdBuy) {
+  if (isWhale) return '🐳 WHALE BUY';
+  if (usdBuy >= 100) return '🚀 BIG BUY';
+  if (usdBuy >= 30) return '🟢 BUY';
+  return '🟢 BUY';
 }
 
 async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solBalanceUsd }) {
@@ -353,7 +353,7 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
   const isWhale = solBalanceUsd >= WHALE_SOL_USD;
   const safeBuyer = buyer || 'Unknown wallet';
   const short = safeBuyer.length > 12 ? safeBuyer.slice(0, 4) + '...' + safeBuyer.slice(-4) : safeBuyer;
-  const emojis = getEmojiSpam(isWhale, usdSpent);
+  const buyBadge = getBuyBadge(isWhale, usdSpent);
 
   const txLink = `https://solscan.io/tx/${txSignature}`;
   const walletLink = `https://solscan.io/account/${safeBuyer}`;
