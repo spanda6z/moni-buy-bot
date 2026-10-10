@@ -28,6 +28,10 @@ let mcap = null;
 let solPriceUpdatedAt = null;
 let moinPriceUpdatedAt = null;
 let marketDataSource = 'Not loaded yet';
+let lastBuy = null;
+let latestTransactionSignature = null;
+let buyMonitorInitialized = false;
+const seenBuySignatures = new Set();
 
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
 const DEFAULT_MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
@@ -80,7 +84,7 @@ bot.help(async (ctx) => {
   const adminCommands = isAdmin(ctx)
     ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
-  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices' + adminCommands);
+  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
 });
 
 bot.command('setminbuy', async (ctx) => {
@@ -135,6 +139,29 @@ bot.command('ping', async (ctx) => {
 
 bot.command('status', async (ctx) => {
   await ctx.reply(`✅ Telegram bot is online\nSolana RPC: ${activeRpcName}\nSOL price: ${formatUsd(solPrice)} (${ageLabel(solPriceUpdatedAt)})\n$moin price: ${formatTokenPrice(moinPrice)} (${ageLabel(moinPriceUpdatedAt)})\nMarket data source: ${marketDataSource}`);
+});
+
+bot.command('lastbuy', async (ctx) => {
+  if (!lastBuy) {
+    await ctx.reply('No purchase has been detected yet. Buy monitoring requires a valid HELIUS_API_KEY in Railway.');
+    return;
+  }
+  await ctx.reply(formatLastBuy(lastBuy), {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    ...Markup.inlineKeyboard([[Markup.button.url('🔎 View transaction', `https://solscan.io/tx/${lastBuy.signature}`), Markup.button.url('📊 Chart', CHART_URL)]]),
+  });
+});
+bot.command('lastpurchase', async (ctx) => {
+  if (!lastBuy) {
+    await ctx.reply('No purchase has been detected yet. Buy monitoring requires a valid HELIUS_API_KEY in Railway.');
+    return;
+  }
+  await ctx.reply(formatLastBuy(lastBuy), {
+    parse_mode: 'Markdown',
+    disable_web_page_preview: true,
+    ...Markup.inlineKeyboard([[Markup.button.url('🔎 View transaction', `https://solscan.io/tx/${lastBuy.signature}`), Markup.button.url('📊 Chart', CHART_URL)]]),
+  });
 });
 
 bot.command('price', async (ctx) => {
@@ -283,7 +310,8 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
   const usdSpent = solPrice == null ? 0 : solSpent * solPrice;
   if (usdSpent < botSettings.minBuyUsd) return;
   const isWhale = solBalanceUsd >= WHALE_SOL_USD;
-  const short = buyer.slice(0, 4) + '...' + buyer.slice(-4);
+  const safeBuyer = buyer || 'Unknown wallet';
+  const short = safeBuyer.length > 12 ? safeBuyer.slice(0, 4) + '...' + safeBuyer.slice(-4) : safeBuyer;
   const emojis = getEmojiSpam(isWhale, usdSpent);
 
   const caption = `
@@ -294,7 +322,7 @@ by @MajorBuyBot
 
 🔷 SOL ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 🪙 moin ${formatNumber(tokensReceived)} ([Tx](https://solscan.io/tx/${txSignature}))
-🔎 Wallet: [${short}](https://solscan.io/account/${buyer})
+🔎 Wallet: [${short}](https://solscan.io/account/${safeBuyer})
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
@@ -308,6 +336,14 @@ ${emojis}
     Markup.button.url('💲 Buy', BUY_URL),
   ]]);
 
+  lastBuy = {
+    buyer: safeBuyer,
+    solSpent,
+    usdSpent,
+    tokensReceived,
+    signature: txSignature,
+    timestamp: Date.now(),
+  };
   const chatId = process.env.TELEGRAM_CHAT_ID;
   const options = {
     caption,
@@ -327,17 +363,97 @@ ${emojis}
   }
 }
 
+function formatLastBuy(buy) {
+  const buyer = buy.buyer || 'Unknown wallet';
+  const short = buyer.length > 12 ? buyer.slice(0, 4) + '...' + buyer.slice(-4) : buyer;
+  return `🆕 *Latest $MOIN purchase*
+
+💵 Amount: ${formatNumber(buy.usdSpent)}
+🔷 SOL spent: ${Number(buy.solSpent || 0).toFixed(4)}
+🪙 MOIN received: ${formatNumber(Number(buy.tokensReceived || 0))}
+👛 Wallet: [${short}](https://solscan.io/account/${buyer})
+🕒 Time: ${new Date(buy.timestamp || Date.now()).toISOString()}
+🔎 [Transaction](https://solscan.io/tx/${buy.signature})
+
+📈 [Chart](${CHART_URL})`;
+}
+
 async function checkBuys() {
-  try {
-    const res = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${MOIN_MINT}`);
-    const json = await res.json();
-    const pair = json.pairs?.[0];
-    if (!pair || !pair.txns) return;
-    // DexScreener's token endpoint does not provide a complete transaction feed.
-    // Actual on-chain buy detection still needs a transaction feed or Helius webhook.
-  } catch (err) {
-    console.error('Check error:', err.message);
+  if (!HELIUS_API_KEY) {
+    console.warn('Buy monitoring disabled: set HELIUS_API_KEY to enable enhanced Solana transaction monitoring.');
+    return;
   }
+  try {
+    const url = `https://api.helius.xyz/v0/addresses/${MOIN_MINT}/transactions?api-key=${HELIUS_API_KEY}&limit=100`;
+    const res = await fetch(url, { timeout: 15000 });
+    if (!res.ok) throw new Error(`Helius transaction feed HTTP ${res.status}`);
+    const txs = await res.json();
+    if (!Array.isArray(txs)) throw new Error('Helius returned an unexpected transaction response');
+
+    if (!buyMonitorInitialized) {
+      latestTransactionSignature = txs[0]?.signature || null;
+      buyMonitorInitialized = true;
+      // Seed the latest purchase from recent history without spamming old alerts.
+      for (const tx of txs) {
+        const buy = parseMoinBuy(tx);
+        if (buy) {
+          lastBuy = buy;
+          break;
+        }
+      }
+      console.log(`Buy monitor initialized; latest purchase ${lastBuy ? 'found' : 'not found'} in recent history`);
+      return;
+    }
+
+    const fresh = [];
+    for (const tx of txs) {
+      if (tx.signature === latestTransactionSignature) break;
+      if (tx.signature && !seenBuySignatures.has(tx.signature)) fresh.push(tx);
+    }
+    if (txs[0]?.signature) latestTransactionSignature = txs[0].signature;
+
+    for (const tx of fresh.reverse()) {
+      if (!tx.signature || seenBuySignatures.has(tx.signature)) continue;
+      seenBuySignatures.add(tx.signature);
+      const buy = parseMoinBuy(tx);
+      if (!buy) continue;
+      lastBuy = buy;
+      if (buy.usdSpent >= botSettings.minBuyUsd) {
+        await sendBuyAlert({
+          buyer: buy.buyer,
+          solSpent: buy.solSpent,
+          tokensReceived: buy.tokensReceived,
+          txSignature: buy.signature,
+          solBalanceUsd: await getSolBalanceUsd(buy.buyer),
+        });
+        console.log(`Buy alert sent: ${buy.usdSpent.toFixed(2)} in transaction ${buy.signature}`);
+      }
+    }
+    if (seenBuySignatures.size > 1000) seenBuySignatures.clear();
+  } catch (err) {
+    console.error('Buy monitoring error:', err.message);
+  }
+}
+
+function parseMoinBuy(tx) {
+  if (!tx || !tx.signature || tx.transactionError) return null;
+  const transfers = Array.isArray(tx.tokenTransfers) ? tx.tokenTransfers : [];
+  const incoming = transfers.filter((t) => t.mint === MOIN_MINT && Number(t.tokenAmount) > 0 && t.toUserAccount);
+  if (!incoming.length) return null;
+
+  const nativeTransfers = Array.isArray(tx.nativeTransfers) ? tx.nativeTransfers : [];
+  const candidates = incoming.map((tokenTransfer) => {
+    const buyer = tokenTransfer.toUserAccount;
+    const solOutLamports = nativeTransfers
+      .filter((t) => t.fromUserAccount === buyer && Number(t.amount) > 0)
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+    return { buyer, tokensReceived: Number(tokenTransfer.tokenAmount), solSpent: solOutLamports / LAMPORTS_PER_SOL };
+  }).sort((a, b) => b.tokensReceived - a.tokensReceived);
+
+  const candidate = candidates[0];
+  if (!candidate || candidate.solSpent <= 0) return null;
+  const usdSpent = solPrice == null ? 0 : candidate.solSpent * solPrice;
+  return { ...candidate, usdSpent, signature: tx.signature, timestamp: Number(tx.timestamp || 0) * 1000 || Date.now() };
 }
 
 async function start() {
@@ -385,8 +501,9 @@ async function start() {
   // prices still load while Telegram polling is recovering from a transient conflict.
   updatePrices().catch((err) => console.error('Initial price update failed:', err.message));
   setInterval(() => updatePrices().catch((err) => console.error('Price update failed:', err.message)), 60_000);
-  // checkBuys() is only a placeholder and its legacy endpoint can return HTML/429s.
-  // Do not poll it until real on-chain buy detection is implemented.
+  // Poll Helius enhanced transactions for real MOIN token transfers and buy alerts.
+  checkBuys().catch((err) => console.error('Initial buy monitor error:', err.message));
+  setInterval(() => checkBuys().catch((err) => console.error('Buy monitor error:', err.message)), 15_000);
 
   // Railway can briefly overlap old/new containers during deployment. Retry a
   // Telegram polling conflict instead of crashing into a restart loop.
