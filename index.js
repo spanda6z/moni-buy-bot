@@ -20,13 +20,49 @@ const CHART_URL = `https://dexscreener.com/solana/${MOIN_MINT}`;
 const BUY_URL = `https://pump.fun/coin/${MOIN_MINT}`;
 const TG_URL = 'https://t.me/moincoinfun';
 
-let lastSignature = null;
 let solPrice = 150;
 let moinPrice = 0.0003;
 let mcap = 300000;
 
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
 const MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
+
+bot.start(async (ctx) => {
+  await ctx.reply(
+    '🐸 Welcome to the $moin Buy Bot!\n\nI am online. Use /status to check the bot, /price to view the latest available price, or /help for commands.',
+    Markup.inlineKeyboard([[
+      Markup.button.url('📊 Chart', CHART_URL),
+      Markup.button.url('💲 Buy $moin', BUY_URL),
+    ]])
+  );
+});
+
+bot.help(async (ctx) => {
+  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices');
+});
+
+bot.command('ping', async (ctx) => {
+  await ctx.reply('🏓 Pong! Telegram bot is responding.');
+});
+
+bot.command('status', async (ctx) => {
+  await ctx.reply(`✅ Telegram bot is online\nSolana RPC: ${activeRpcName}\nSOL price cache: $${solPrice}\n$moin price cache: $${moinPrice}`);
+});
+
+bot.command('price', async (ctx) => {
+  await ctx.reply(`📈 $moin price: $${moinPrice}\nMarket cap/FDV: $${formatNumber(mcap)}\nSOL price: $${solPrice}\n\nChart: ${CHART_URL}`);
+});
+
+bot.on('text', async (ctx) => {
+  const text = ctx.message.text || '';
+  if (!text.startsWith('/')) {
+    await ctx.reply('I am online. Send /help to see available commands.');
+  }
+});
+
+bot.catch((err) => {
+  console.error('Telegram update handler error:', err.message);
+});
 
 async function updatePrices() {
   try {
@@ -49,7 +85,7 @@ async function updatePrices() {
 function formatNumber(n) {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
 async function getSolBalanceUsd(walletAddress) {
@@ -111,7 +147,7 @@ async function checkBuys() {
     const pair = json.pairs?.[0];
     if (!pair || !pair.txns) return;
     // DexScreener's token endpoint does not provide a complete transaction feed.
-    // Use a Solana transaction provider/webhook to implement real buy detection.
+    // Actual on-chain buy detection still needs a transaction feed or Helius webhook.
   } catch (err) {
     console.error('Check error:', err.message);
   }
@@ -123,16 +159,15 @@ async function start() {
   console.log(`Solana RPC provider: ${activeRpcName}`);
 
   if (!telegramToken || !process.env.TELEGRAM_CHAT_ID) {
-    console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Set both in your hosting provider environment variables.');
+    console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Set both in Railway Variables.');
     process.exit(1);
   }
 
   try {
-    await bot.telegram.getMe();
+    const me = await bot.telegram.getMe();
+    console.log(`Telegram authenticated as @${me.username}`);
   } catch (err) {
-    console.error('Telegram authentication failed. TELEGRAM_BOT_TOKEN is invalid or revoked.');
-    console.error('Create/check the token with @BotFather, update TELEGRAM_BOT_TOKEN in Railway Variables, then redeploy.');
-    console.error('Telegram API response:', err.response?.description || err.message);
+    console.error('Telegram authentication failed:', err.response?.description || err.message);
     process.exit(1);
   }
 
@@ -155,22 +190,23 @@ async function start() {
       console.log('Public Solana RPC fallback connected successfully');
     } catch (fallbackErr) {
       console.error('Public RPC fallback also failed:', fallbackErr.message);
-      console.error('Check Helius quota or wait for the quota reset. Public RPC has its own rate limits.');
       process.exit(1);
     }
   }
 
-  await updatePrices();
-  setInterval(updatePrices, 60_000);
-  setInterval(checkBuys, 15_000);
-
   try {
     await bot.launch();
-    console.log('Telegram bot online - ready for Railway');
+    console.log('Telegram bot online - ready for Railway. Commands: /start /help /ping /status /price');
   } catch (err) {
     console.error('Telegram bot failed to launch:', err.response?.description || err.message);
     process.exit(1);
   }
+
+  // Refresh market data after Telegram polling is running so a slow price API
+  // cannot prevent the bot from starting or responding to Telegram messages.
+  updatePrices().catch((err) => console.error('Initial price update failed:', err.message));
+  setInterval(() => updatePrices().catch((err) => console.error('Price update failed:', err.message)), 60_000);
+  setInterval(checkBuys, 15_000);
 }
 
 start().catch((err) => {
