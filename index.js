@@ -5,7 +5,14 @@ const fetch = require('node-fetch');
 
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(telegramToken || '000000000:INVALID_TOKEN');
-const connection = new Connection(process.env.SOLANA_RPC || 'https://api.mainnet-beta.solana.com', 'confirmed');
+
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+const SOLANA_RPC = process.env.SOLANA_RPC || (
+  HELIUS_API_KEY
+    ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+    : 'https://api.mainnet-beta.solana.com'
+);
+const connection = new Connection(SOLANA_RPC, 'confirmed');
 
 const MOIN_MINT = '8DXqVUopcdviLvujTcpwEqkKzB43Arp6E1axzsEE5Btq';
 const CHART_URL = `https://dexscreener.com/solana/${MOIN_MINT}`;
@@ -112,6 +119,7 @@ async function checkBuys() {
 async function start() {
   console.log('Solana $moin Buy Bot starting');
   console.log(`Whale rule: wallet SOL balance ≥ $${WHALE_SOL_USD}`);
+  console.log(`Solana RPC provider: ${HELIUS_API_KEY ? 'Helius' : (process.env.SOLANA_RPC ? 'Custom SOLANA_RPC' : 'Public Solana RPC fallback')}`);
 
   if (!telegramToken || !process.env.TELEGRAM_CHAT_ID) {
     console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID. Set both in your hosting provider environment variables.');
@@ -124,6 +132,14 @@ async function start() {
     console.error('Telegram authentication failed. TELEGRAM_BOT_TOKEN is invalid or revoked.');
     console.error('Create/check the token with @BotFather, update TELEGRAM_BOT_TOKEN in Railway Variables, then redeploy.');
     console.error('Telegram API response:', err.response?.description || err.message);
+    process.exit(1);
+  }
+
+  try {
+    await connection.getLatestBlockhash('confirmed');
+    console.log('Solana RPC connection successful');
+  } catch (err) {
+    console.error('Solana RPC connection failed:', err.message);
     process.exit(1);
   }
 
