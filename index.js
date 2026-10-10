@@ -572,6 +572,15 @@ async function start() {
   }
 
   try {
+    await bot.telegram.setMyCommands([
+      { command: 'start', description: 'Start the $MOIN bot' },
+      { command: 'menu', description: 'Open the interactive menu' },
+      { command: 'price', description: 'Latest $MOIN and SOL prices' },
+      { command: 'lastbuy', description: 'Latest detected MOIN purchase' },
+      { command: 'status', description: 'Check bot status' },
+      { command: 'help', description: 'Show available commands' },
+      { command: 'ping', description: 'Check bot response' },
+    ]);
     const me = await bot.telegram.getMe();
     console.log(`Telegram authenticated as @${me.username}`);
   } catch (err) {
