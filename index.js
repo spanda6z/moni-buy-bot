@@ -371,7 +371,7 @@ ${title}
 👤 Buyer: [${short}](${walletLink}) / [Txn](${txLink})
 📈 Market cap: $${formatNumber(mcap)}
 📣 Socials: [Telegram](${TG_URL})
-${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\\n` : ''}${emojis}
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n` : ''}${emojis}
     `.trim();
   } else if (botSettings.alertType === 'whale') {
     caption = `
@@ -382,7 +382,7 @@ ${title}
 ➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
 ⬅️ MOIN: ${formatNumber(tokensReceived)}
 👤 [Buyer](${walletLink}) / [Txn](${txLink})
-${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\\n🐋🐋🐋🐋🐋\\n` : ''}📈 Marketcap: $${formatNumber(mcap)}
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐋🐋🐋🐋🐋\n` : ''}📈 Marketcap: $${formatNumber(mcap)}
 📣 [Telegram](${TG_URL})
     `.trim();
   } else {
@@ -397,7 +397,7 @@ ${title}
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
-${emojis}${isWhale ? `\\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
+${emojis}${isWhale ? `\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
     `.trim();
   }
 
