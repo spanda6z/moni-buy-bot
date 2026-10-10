@@ -1,15 +1,18 @@
 {
-  "name": "moni-buy-bot",
-  "version": "1.0.0",
-  "description": "Simple Telegram buy bot for $MONI on Monad",
+  "name": "moin-buy-bot",
+  "version": "2.0.0",
+  "description": "Solana $moin buy bot - whale when wallet SOL balance > $30k",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.95.3",
     "dotenv": "^16.4.5",
-    "ethers": "^6.13.0",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

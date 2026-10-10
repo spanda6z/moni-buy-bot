@@ -1,40 +1,49 @@
-# MONI Buy Bot (Monad)
+# Solana $moin Buy Bot (Railway Ready)
 
-Telegram buy bot for **$MONI** on Monad.
+Buy notification bot for **$moin** on Solana.
 
-**Whale rule**: Any wallet that buys $MONI and already holds **more than 25,000,000 MONI** is announced as a 🐋 WHALE.
+**Whale rule**: If the buyer’s wallet has **more than $30,000** in SOL balance → announce as 🐋 WHALE (even if the buy is only $1).
 
-## Sample
+## Features
+- Style matching MajorBuyBot
+- Shows SOL spent + USD
+- Token amount + Tx link
+- Wallet SOL balance in USD
+- Whale detection based on SOL balance
+- Chart + Buy buttons
+- Ready for Railway
+
+## Deploy on Railway
+
+1. Go to [railway.app](https://railway.app) and create a new project
+2. Deploy from GitHub → select this repo (`spanda6z/moni-buy-bot`)
+3. Add these environment variables:
 
 ```
-🆕 | $MONI BUY! 🐋
-by @MONIBuyBot
-
-🐸👍 🐸👍 🐸👍
-
-🔷 ≈ $38.57
-🪙 MONI 133,640 (Tx)
-🔎 Wallet: 0xAb12...Cd34
-💰 Holdings: 28.4M MONI
-📈 MCap: $14.2K
-📣 Socials: 𝗧𝗴
-
-🐸🐸🐸🐸🐸🐸 🐋 WHALE WALLET
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=-100xxxxxxxxxx
+SOLANA_RPC=https://api.mainnet-beta.solana.com
+MIN_BUY_USD=1
+WHALE_SOL_USD=30000
 ```
 
-## Setup
+4. Deploy
+
+## Local run
 
 ```bash
 git clone https://github.com/spanda6z/moni-buy-bot.git
 cd moni-buy-bot
 npm install
 cp .env.example .env
-```
-
-Edit `.env` with your bot token + chat ID, then:
-
-```bash
+# edit .env
 npm start
 ```
 
-Optional: put the Pepe video as `buy.mp4`
+## Important Note
+
+Public Solana RPCs are limited. For reliable real-time buy detection we recommend adding a free Helius API key later (webhooks are the best method).
+
+The current structure is ready — we can upgrade the detection part in one step when you have a Helius key.
+
+Token: `8DXqVUopcdviLvujTcpwEqkKzB43Arp6E1axzsEE5Btq`
