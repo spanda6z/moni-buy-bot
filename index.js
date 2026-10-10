@@ -107,7 +107,7 @@ bot.command('alerttype', async (ctx) => {
 
 bot.command('setalerttype', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const type = String((ctx.message.text || '').split(/\\s+/)[1] || '').toLowerCase();
+  const type = String((ctx.message.text || '').split(/\s+/)[1] || '').toLowerCase();
   if (!['standard', 'detailed', 'whale'].includes(type)) {
     await ctx.reply('Usage: /setalerttype standard|detailed|whale');
     return;
