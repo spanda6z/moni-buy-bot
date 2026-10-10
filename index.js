@@ -39,7 +39,7 @@ const SETTINGS_FILE = path.join(__dirname, 'bot-settings.json');
 const ADMIN_TELEGRAM_IDS = new Set(
   String(process.env.ADMIN_TELEGRAM_IDS || '').split(',').map((id) => id.trim()).filter(Boolean)
 );
-let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaUrl: null };
+let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaUrl: null, alertType: 'standard' };
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
@@ -48,6 +48,7 @@ try {
       minBuyUsd: Number.isFinite(savedMinimum) && savedMinimum >= 0 ? savedMinimum : DEFAULT_MIN_BUY_USD,
       buyMediaType: ['photo', 'video'].includes(saved.buyMediaType) ? saved.buyMediaType : null,
       buyMediaUrl: typeof saved.buyMediaUrl === 'string' && saved.buyMediaUrl.trim() ? saved.buyMediaUrl.trim() : null,
+      alertType: ['standard', 'detailed', 'whale'].includes(saved.alertType) ? saved.alertType : 'standard',
     };
   }
 } catch (err) {
@@ -82,9 +83,49 @@ bot.start(async (ctx) => {
 
 bot.help(async (ctx) => {
   const adminCommands = isAdmin(ctx)
-    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
+    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
+});
+
+
+function alertTypeKeyboard() {
+  return Markup.inlineKeyboard([[
+    Markup.button.callback(botSettings.alertType === 'standard' ? '✅ Standard' : 'Standard', 'alerttype:standard'),
+    Markup.button.callback(botSettings.alertType === 'detailed' ? '✅ Detailed' : 'Detailed', 'alerttype:detailed'),
+    Markup.button.callback(botSettings.alertType === 'whale' ? '✅ Whale' : 'Whale', 'alerttype:whale'),
+  ]]);
+}
+
+bot.command('alerttype', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  await ctx.reply(
+    `Choose the buy-alert style. Current: ${botSettings.alertType}.\n\nStandard: compact MOIN buy alert\nDetailed: transaction-focused alert\nWhale: portfolio-style alert; wallet balance is shown only for qualifying whales.`,
+    alertTypeKeyboard()
+  );
+});
+
+bot.command('setalerttype', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  const type = String((ctx.message.text || '').split(/\\s+/)[1] || '').toLowerCase();
+  if (!['standard', 'detailed', 'whale'].includes(type)) {
+    await ctx.reply('Usage: /setalerttype standard|detailed|whale');
+    return;
+  }
+  botSettings.alertType = type;
+  saveBotSettings();
+  await ctx.reply(`✅ Buy-alert style set to ${type}.`, alertTypeKeyboard());
+});
+
+bot.action(/^alerttype:(standard|detailed|whale)$/, async (ctx) => {
+  if (!isAdmin(ctx)) {
+    await ctx.answerCbQuery('Admin only.');
+    return;
+  }
+  botSettings.alertType = ctx.match[1];
+  saveBotSettings();
+  await ctx.answerCbQuery(`Alert style: ${botSettings.alertType}`);
+  await ctx.editMessageText(`✅ Buy-alert style set to ${botSettings.alertType}.\n\nStandard: compact MOIN buy alert\nDetailed: transaction-focused alert\nWhale: portfolio-style alert; wallet balance is shown only for qualifying whales.`, alertTypeKeyboard());
 });
 
 bot.command('setminbuy', async (ctx) => {
@@ -314,20 +355,51 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
   const short = safeBuyer.length > 12 ? safeBuyer.slice(0, 4) + '...' + safeBuyer.slice(-4) : safeBuyer;
   const emojis = getEmojiSpam(isWhale, usdSpent);
 
-  const caption = `
-${isWhale ? '🐳' : '🆕'} | $moin BUY!${isWhale ? ' 🐋' : ''}
-by @monibuy_bot
+  const txLink = `https://solscan.io/tx/${txSignature}`;
+  const walletLink = `https://solscan.io/account/${safeBuyer}`;
+  const title = `${isWhale ? '🐳' : '🆕'} | $MOIN BUY! ${isWhale ? '🐋' : ''}\nby @monibuy_bot`;
+  let caption;
 
-🎩🎩🎩🎩🎩🎩🎩🎩🎩🎩🎩
+  if (botSettings.alertType === 'detailed') {
+    caption = `
+${title}
+
+🤖🤖🤖🤖🤖🤖🤖🤖🤖🤖
+
+➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
+⬅️ MOIN: ${formatNumber(tokensReceived)}
+👤 Buyer: [${short}](${walletLink}) / [Txn](${txLink})
+📈 Market cap: $${formatNumber(mcap)}
+📣 Socials: [Telegram](${TG_URL})
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\\n` : ''}${emojis}
+    `.trim();
+  } else if (botSettings.alertType === 'whale') {
+    caption = `
+${title}
+
+🚀🚀🚀🚀🚀🚀🚀🚀
+
+➡️ SOL: ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
+⬅️ MOIN: ${formatNumber(tokensReceived)}
+👤 [Buyer](${walletLink}) / [Txn](${txLink})
+${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\\n🐋🐋🐋🐋🐋\\n` : ''}📈 Marketcap: $${formatNumber(mcap)}
+📣 [Telegram](${TG_URL})
+    `.trim();
+  } else {
+    caption = `
+${title}
+
+🐸👍 🐸👍
 
 🔷 SOL ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
-🪙 moin ${formatNumber(tokensReceived)} ([Tx](https://solscan.io/tx/${txSignature}))
-🔎 Wallet: [${short}](https://solscan.io/account/${safeBuyer})
+🪙 MOIN ${formatNumber(tokensReceived)} ([Tx](${txLink}))
+🔎 Wallet: [${short}](${walletLink})
 📈 MCap: $${formatNumber(mcap)}
 📣 Socials: [𝗧𝗴](${TG_URL})
 
-${isWhale ? `💎 Whale Wallet Balance: ${formatNumber(solBalanceUsd)}\n\n` : ''}${emojis}
-  `.trim();
+${emojis}${isWhale ? `\\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
+    `.trim();
+  }
 
   const keyboard = Markup.inlineKeyboard([[
     Markup.button.url('📊 Chart', CHART_URL),
