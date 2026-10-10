@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Telegraf } = require('telegraf');
+const { Telegraf, Markup } = require('telegraf');
 const { ethers } = require('ethers');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
@@ -7,12 +7,15 @@ const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || 'https://rpc.
 
 const MONI = '0x0CC9B2e2AcD7BACfF79eb7dB48F5662B622E7777';
 const POOL = '0x0198833561e4b64afa593cc3e90f446933ac2a9a';
+const CHART_URL = 'https://www.geckoterminal.com/monad/pools/0x0198833561e4b64afa593cc3e90f446933ac2a9a';
+const BUY_URL = 'https://www.monimonad.com/'; // or your preferred swap link
 
 const ABI = ['event Transfer(address indexed from, address indexed to, uint256 value)'];
 const contract = new ethers.Contract(MONI, ABI, provider);
 
 let lastBlock = 0;
-let price = 0.000015; // fallback price
+let price = 0.000015;
+let mcap = 0;
 
 async function getPrice() {
   try {
@@ -20,10 +23,20 @@ async function getPrice() {
       'https://api.geckoterminal.com/api/v2/networks/monad/pools/0x0198833561e4b64afa593cc3e90f446933ac2a9a'
     );
     const json = await res.json();
-    price = parseFloat(json.data?.attributes?.base_token_price_usd) || price;
+    const attrs = json.data?.attributes;
+    if (attrs) {
+      price = parseFloat(attrs.base_token_price_usd) || price;
+      mcap = parseFloat(attrs.fdv_usd) || parseFloat(attrs.market_cap_usd) || mcap;
+    }
   } catch (e) {
     console.log('Price update failed, using last known');
   }
+}
+
+function formatNumber(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 
 async function checkBuys() {
@@ -41,9 +54,11 @@ async function checkBuys() {
 
       if (usd < Number(process.env.MIN_BUY_USD || 5)) continue;
 
-      const emojis = '❄️'.repeat(Math.min(Math.floor(usd / 10) + 1, 8));
+      const emojiCount = Math.min(Math.floor(usd / 10) + 1, 8);
+      const emojis = '❄️'.repeat(emojiCount);
       const short = `${to.slice(0, 6)}...${to.slice(-4)}`;
 
+      // Clean card style message
       const msg = `
 ${emojis} **NEW BUY** ${emojis}
 
@@ -51,18 +66,27 @@ ${emojis} **NEW BUY** ${emojis}
 
 ${emojis}
 
-**${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} MONI**
-≈ $${usd.toFixed(2)}
+💰 **${formatNumber(amount)} MONI**
+💵 ≈ $${usd.toFixed(2)}
 
 👤 [${short}](https://monadscan.com/address/${to})
 🔗 [Tx](https://monadscan.com/tx/${log.transactionHash})
+📊 MCap $${formatNumber(mcap)}
 
-❄️ Yeti climbing!
+❄️ Yeti climbing the mountain!
       `.trim();
+
+      const keyboard = Markup.inlineKeyboard([
+        [
+          Markup.button.url('📈 Chart', CHART_URL),
+          Markup.button.url('🛒 Buy', BUY_URL),
+        ],
+      ]);
 
       await bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, msg, {
         parse_mode: 'Markdown',
         disable_web_page_preview: true,
+        ...keyboard,
       });
     }
 
@@ -75,8 +99,8 @@ ${emojis}
 async function start() {
   console.log('MONI Buy Bot started on Monad...');
   await getPrice();
-  setInterval(getPrice, 60_000); // update price every minute
-  setInterval(checkBuys, 8_000); // check every 8 seconds
+  setInterval(getPrice, 60_000);
+  setInterval(checkBuys, 8_000);
 
   bot.launch();
   console.log('Telegram bot online');
