@@ -148,7 +148,7 @@ async function updatePrices() {
         console.log('Using SOL/USD derived from the selected MOIN/SOL pair');
       }
     }
-    console.log(`Market prices updated: MOIN=$${formatTokenPrice(moinPrice)}, SOL=${formatUsd(solPrice)}, source=${marketDataSource}`);
+    console.log(`Market prices updated: MOIN=${formatTokenPrice(moinPrice)}, SOL=${formatUsd(solPrice)}, source=${marketDataSource}`);
   } catch (e) {
     console.error('MOIN price update failed:', e.message);
   }
@@ -287,7 +287,8 @@ async function start() {
   // prices still load while Telegram polling is recovering from a transient conflict.
   updatePrices().catch((err) => console.error('Initial price update failed:', err.message));
   setInterval(() => updatePrices().catch((err) => console.error('Price update failed:', err.message)), 60_000);
-  setInterval(checkBuys, 15_000);
+  // checkBuys() is only a placeholder and its legacy endpoint can return HTML/429s.
+  // Do not poll it until real on-chain buy detection is implemented.
 
   // Railway can briefly overlap old/new containers during deployment. Retry a
   // Telegram polling conflict instead of crashing into a restart loop.
