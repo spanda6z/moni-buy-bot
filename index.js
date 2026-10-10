@@ -357,7 +357,7 @@ async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solB
 
   const txLink = `https://solscan.io/tx/${txSignature}`;
   const walletLink = `https://solscan.io/account/${safeBuyer}`;
-  const title = `${isWhale ? '🐳' : '🆕'} | $MOIN BUY! ${isWhale ? '🐋' : ''}\nby @monibuy_bot`;
+  const title = `${isWhale ? '🐳' : '🆕'} | $MOIN BUY! ${isWhale ? '🐋' : ''}\nby @monibuy\\_bot`;
   let caption;
 
   if (botSettings.alertType === 'detailed') {
