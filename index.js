@@ -2,6 +2,8 @@ require('dotenv').config();
 const { Telegraf, Markup } = require('telegraf');
 const { Connection, PublicKey, LAMPORTS_PER_SOL } = require('@solana/web3.js');
 const fetch = require('node-fetch');
+const fs = require('fs');
+const path = require('path');
 
 const telegramToken = process.env.TELEGRAM_BOT_TOKEN;
 const bot = new Telegraf(telegramToken || '000000000:INVALID_TOKEN');
@@ -28,7 +30,41 @@ let moinPriceUpdatedAt = null;
 let marketDataSource = 'Not loaded yet';
 
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
-const MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
+const DEFAULT_MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
+const SETTINGS_FILE = path.join(__dirname, 'bot-settings.json');
+const ADMIN_TELEGRAM_IDS = new Set(
+  String(process.env.ADMIN_TELEGRAM_IDS || '').split(',').map((id) => id.trim()).filter(Boolean)
+);
+let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaUrl: null };
+try {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    const savedMinimum = Number(saved.minBuyUsd);
+    botSettings = {
+      minBuyUsd: Number.isFinite(savedMinimum) && savedMinimum >= 0 ? savedMinimum : DEFAULT_MIN_BUY_USD,
+      buyMediaType: ['photo', 'video'].includes(saved.buyMediaType) ? saved.buyMediaType : null,
+      buyMediaUrl: typeof saved.buyMediaUrl === 'string' && saved.buyMediaUrl.trim() ? saved.buyMediaUrl.trim() : null,
+    };
+  }
+} catch (err) {
+  console.error('Could not load bot settings:', err.message);
+}
+
+function saveBotSettings() {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(botSettings, null, 2));
+}
+
+function isAdmin(ctx) {
+  return ADMIN_TELEGRAM_IDS.has(String(ctx.from && ctx.from.id));
+}
+
+async function requireAdmin(ctx) {
+  if (!isAdmin(ctx)) {
+    await ctx.reply('⛔ Admin only. Configure your Telegram numeric user ID in Railway as ADMIN_TELEGRAM_IDS.');
+    return false;
+  }
+  return true;
+}
 
 bot.start(async (ctx) => {
   await ctx.reply(
@@ -41,7 +77,56 @@ bot.start(async (ctx) => {
 });
 
 bot.help(async (ctx) => {
-  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices');
+  const adminCommands = isAdmin(ctx)
+    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
+    : '';
+  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices' + adminCommands);
+});
+
+bot.command('setminbuy', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  const amount = Number((ctx.message.text || '').split(/\\s+/)[1]);
+  if (!Number.isFinite(amount) || amount < 0) {
+    await ctx.reply('Usage: /setminbuy <USD>\nExample: /setminbuy 5');
+    return;
+  }
+  botSettings.minBuyUsd = amount;
+  saveBotSettings();
+  await ctx.reply(`✅ Minimum buy threshold set to ${amount}. Buy alerts below this USD amount will be ignored.`);
+});
+
+bot.command('setbuyimage', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  const url = (ctx.message.text || '').trim().split(/\\s+/).slice(1).join(' ');
+  if (!/^https?:\\/\\//i.test(url)) {
+    await ctx.reply('Usage: /setbuyimage <https://image-url>');
+    return;
+  }
+  botSettings.buyMediaType = 'photo';
+  botSettings.buyMediaUrl = url;
+  saveBotSettings();
+  await ctx.reply('✅ Buy-alert image saved.');
+});
+
+bot.command('setbuyvideo', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  const url = (ctx.message.text || '').trim().split(/\\s+/).slice(1).join(' ');
+  if (!/^https?:\\/\\//i.test(url)) {
+    await ctx.reply('Usage: /setbuyvideo <https://video-url>');
+    return;
+  }
+  botSettings.buyMediaType = 'video';
+  botSettings.buyMediaUrl = url;
+  saveBotSettings();
+  await ctx.reply('✅ Buy-alert video saved.');
+});
+
+bot.command('clearbuymedia', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  botSettings.buyMediaType = null;
+  botSettings.buyMediaUrl = null;
+  saveBotSettings();
+  await ctx.reply('✅ Buy-alert media cleared.');
 });
 
 bot.command('ping', async (ctx) => {
@@ -196,6 +281,7 @@ function getEmojiSpam(isWhale, usdBuy) {
 
 async function sendBuyAlert({ buyer, solSpent, tokensReceived, txSignature, solBalanceUsd }) {
   const usdSpent = solPrice == null ? 0 : solSpent * solPrice;
+  if (usdSpent < botSettings.minBuyUsd) return;
   const isWhale = solBalanceUsd >= WHALE_SOL_USD;
   const short = buyer.slice(0, 4) + '...' + buyer.slice(-4);
   const emojis = getEmojiSpam(isWhale, usdSpent);
@@ -222,11 +308,23 @@ ${emojis}
     Markup.button.url('💲 Buy', BUY_URL),
   ]]);
 
-  await bot.telegram.sendMessage(process.env.TELEGRAM_CHAT_ID, caption, {
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const options = {
+    caption,
     parse_mode: 'Markdown',
-    disable_web_page_preview: true,
     ...keyboard,
-  });
+  };
+  if (botSettings.buyMediaType === 'photo' && botSettings.buyMediaUrl) {
+    await bot.telegram.sendPhoto(chatId, botSettings.buyMediaUrl, options);
+  } else if (botSettings.buyMediaType === 'video' && botSettings.buyMediaUrl) {
+    await bot.telegram.sendVideo(chatId, botSettings.buyMediaUrl, options);
+  } else {
+    await bot.telegram.sendMessage(chatId, caption, {
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...keyboard,
+    });
+  }
 }
 
 async function checkBuys() {
