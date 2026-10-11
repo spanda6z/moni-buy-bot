@@ -486,24 +486,25 @@ ${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐳 WHALE BUY\
 📣 [Telegram](${TG_URL})
     `.trim();
   } else {
+    // Compact community-style alert. Do not claim "New Holder" unless holder
+    // history is actually verified; this monitor only observes recent transfers.
     caption = `
-${title}
+🐸 *$MOIN Buy!*
+🐸🐸🐸🐸🐸🐸🐸🐸
 
-━━━━━━━━━━━━━━
-
-🔷 SOL ${solSpent.toFixed(4)} ($${usdSpent.toFixed(2)})
-🪙 MOIN ${formatNumber(tokensReceived)} ([Tx](${txLink}))
-🔎 Wallet: [${short}](${walletLink})
-📈 MCap: $${formatNumber(mcap)}
-📣 Socials: [𝗧𝗴](${TG_URL})
-
-${buyBadge}${isWhale ? `\n💎 Whale Wallet Balance: $${formatNumber(solBalanceUsd)}` : ''}
+💵 ${usdSpent.toFixed(2)} (${solSpent.toFixed(3)} SOL)
+🏷 ${formatNumber(tokensReceived)} MOIN
+👤 [${short}](${walletLink}) / [TX](${txLink})
+💲 Price ${formatTokenPrice(moinPrice)}
+▶️ Market Cap ${formatNumber(mcap)}${isWhale ? `\n🐳 Whale wallet: ${formatNumber(solBalanceUsd)}` : ''}
     `.trim();
   }
 
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(TG_URL)}&text=${encodeURIComponent(`🐸 $MOIN Buy! ${usdSpent.toFixed(2)}`)}`;
   const keyboard = Markup.inlineKeyboard([[
     Markup.button.url('📊 Chart', CHART_URL),
-    Markup.button.url('💲 Buy', BUY_URL),
+    Markup.button.url('🔥 Share', shareUrl),
+    Markup.button.url('💰 Buy', BUY_URL),
   ]]);
 
   lastBuy = {
