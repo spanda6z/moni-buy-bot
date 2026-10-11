@@ -492,11 +492,11 @@ ${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐳 WHALE BUY\
 🐸 *$MOIN Buy!*
 🐸🐸🐸🐸🐸🐸🐸🐸
 
-💵 ${usdSpent.toFixed(2)} (${solSpent.toFixed(3)} SOL)
+💵 $${usdSpent.toFixed(2)} (${solSpent.toFixed(3)} SOL)
 🏷 ${formatNumber(tokensReceived)} MOIN
 👤 [${short}](${walletLink}) / [TX](${txLink})
 💲 Price ${formatTokenPrice(moinPrice)}
-▶️ Market Cap ${formatNumber(mcap)}${isWhale ? `\n🐳 Whale wallet: ${formatNumber(solBalanceUsd)}` : ''}
+▶️ Market Cap $${formatNumber(mcap)}${isWhale ? `\n🐳 Whale wallet: $${formatNumber(solBalanceUsd)}` : ''}
     `.trim();
   }
 
