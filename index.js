@@ -36,9 +36,6 @@ const seenBuySignatures = new Set();
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
 const DEFAULT_MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
 const SETTINGS_FILE = path.join(__dirname, 'bot-settings.json');
-const ADMIN_TELEGRAM_IDS = new Set(
-  String(process.env.ADMIN_TELEGRAM_IDS || '').split(',').map((id) => id.trim()).filter(Boolean)
-);
 let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaUrl: null, alertType: 'standard' };
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
@@ -59,13 +56,28 @@ function saveBotSettings() {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(botSettings, null, 2));
 }
 
-function isAdmin(ctx) {
-  return ADMIN_TELEGRAM_IDS.has(String(ctx.from && ctx.from.id));
+async function isAdmin(ctx) {
+  const userId = ctx.from && ctx.from.id;
+  if (!userId) return false;
+  // In groups, check the current group. In private chat, check the configured
+  // alert group (TELEGRAM_CHAT_ID) so group admins can manage the bot privately.
+  const chatType = ctx.chat && ctx.chat.type;
+  const chatId = chatType === 'group' || chatType === 'supergroup'
+    ? ctx.chat.id
+    : process.env.TELEGRAM_CHAT_ID;
+  if (!chatId) return false;
+  try {
+    const member = await ctx.telegram.getChatMember(chatId, userId);
+    return member.status === 'creator' || member.status === 'administrator';
+  } catch (err) {
+    console.warn('Could not verify Telegram group admin:', err.message);
+    return false;
+  }
 }
 
 async function requireAdmin(ctx) {
-  if (!isAdmin(ctx)) {
-    await ctx.reply('⛔ Admin only. Configure your Telegram numeric user ID in Railway as ADMIN_TELEGRAM_IDS.');
+  if (!await isAdmin(ctx)) {
+    await ctx.reply('⛔ Admin only. You must be an administrator in the configured Telegram group.');
     return false;
   }
   return true;
@@ -99,8 +111,8 @@ function mainMenuKeyboard() {
   ]);
 }
 
-function menuHelpText(ctx) {
-  const adminCommands = isAdmin(ctx)
+async function menuHelpText(ctx) {
+  const adminCommands = await isAdmin(ctx)
     ? '\n\nAdmin commands:\n/setminbuy <USD>\n/alerttype\n/setalerttype <standard|detailed|whale>\n/setbuyimage <URL>\n/setbuyvideo <URL>\n/clearbuymedia'
     : '';
   return 'Available commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show commands\n/ping — Check response\n/status — Bot status\n/price — Latest cached prices\n/lastbuy — Latest detected purchase' + adminCommands;
@@ -117,7 +129,7 @@ bot.action(/^menu:(price|lastbuy|status|help|admin)$/, async (ctx) => {
   if (action === 'price') {
     await ctx.reply(
       `📈 $MOIN Price: ${formatTokenPrice(moinPrice)}\nMarket cap/FDV: ${mcap == null ? 'Unavailable' : '
-  const adminCommands = isAdmin(ctx)
+  const adminCommands = await isAdmin(ctx)
     ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
@@ -153,7 +165,7 @@ bot.command('setalerttype', async (ctx) => {
 });
 
 bot.action(/^alerttype:(standard|detailed|whale)$/, async (ctx) => {
-  if (!isAdmin(ctx)) {
+  if (!await isAdmin(ctx)) {
     await ctx.answerCbQuery('Admin only.');
     return;
   }
@@ -671,7 +683,7 @@ process.once('SIGTERM', () => bot.stop('SIGTERM'));
   }
 
   if (action === 'help') {
-    await ctx.reply(menuHelpText(ctx));
+    await ctx.reply(await menuHelpText(ctx));
     return;
   }
 
