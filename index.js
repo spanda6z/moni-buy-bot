@@ -36,7 +36,8 @@ const seenBuySignatures = new Set();
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
 const DEFAULT_MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
 const SETTINGS_FILE = path.join(__dirname, 'bot-settings.json');
-let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaUrl: null, alertType: 'standard' };
+let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaFileId: null, alertType: 'standard' };
+const awaitingBuyMedia = new Map();
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
@@ -44,7 +45,7 @@ try {
     botSettings = {
       minBuyUsd: Number.isFinite(savedMinimum) && savedMinimum >= 0 ? savedMinimum : DEFAULT_MIN_BUY_USD,
       buyMediaType: ['photo', 'video'].includes(saved.buyMediaType) ? saved.buyMediaType : null,
-      buyMediaUrl: typeof saved.buyMediaUrl === 'string' && saved.buyMediaUrl.trim() ? saved.buyMediaUrl.trim() : null,
+      buyMediaFileId: typeof saved.buyMediaFileId === 'string' && saved.buyMediaFileId.trim() ? saved.buyMediaFileId.trim() : null,
       alertType: ['standard', 'detailed', 'whale'].includes(saved.alertType) ? saved.alertType : 'standard',
     };
   }
@@ -113,7 +114,7 @@ function mainMenuKeyboard() {
 
 async function menuHelpText(ctx) {
   const adminCommands = await isAdmin(ctx)
-    ? '\n\nAdmin commands:\n/setminbuy <USD>\n/alerttype\n/setalerttype <standard|detailed|whale>\n/setbuyimage <URL>\n/setbuyvideo <URL>\n/clearbuymedia'
+    ? '\n\nAdmin commands:\n/setminbuy <USD>\n/alerttype\n/setalerttype <standard|detailed|whale>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia'
     : '';
   return 'Available commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show commands\n/ping — Check response\n/status — Bot status\n/price — Latest cached prices\n/lastbuy — Latest detected purchase' + adminCommands;
 }
@@ -159,14 +160,14 @@ bot.action(/^menu:(price|lastbuy|status|help|admin)$/, async (ctx) => {
 
   if (!await requireAdmin(ctx)) return;
   await ctx.reply(
-    `⚙️ Admin Settings\nCurrent minimum buy alert: $${botSettings.minBuyUsd}\nAlert style: ${botSettings.alertType}\nBuy media: ${botSettings.buyMediaType || 'None'}\n\nChoose alert style below or use a command:\n/setminbuy <USD>\n/setbuyimage <URL>\n/setbuyvideo <URL>\n/clearbuymedia`,
+    `⚙️ Admin Settings\nCurrent minimum buy alert: $${botSettings.minBuyUsd}\nAlert style: ${botSettings.alertType}\nBuy media: ${botSettings.buyMediaType || 'None'}\n\nChoose alert style below or use a command:\n/setminbuy <USD>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia`,
     alertTypeKeyboard()
   );
 });
 
 bot.help(async (ctx) => {
   const adminCommands = await isAdmin(ctx)
-    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
+    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage — then upload a photo — set buy-alert image\n/setbuyvideo — then upload a video — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
 });
@@ -224,34 +225,51 @@ bot.command('setminbuy', async (ctx) => {
 
 bot.command('setbuyimage', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const url = (ctx.message.text || '').trim().split(/\s+/).slice(1).join(' ');
-  if (!/^https?:\/\//i.test(url)) {
-    await ctx.reply('Usage: /setbuyimage <https://image-url>');
-    return;
-  }
-  botSettings.buyMediaType = 'photo';
-  botSettings.buyMediaUrl = url;
-  saveBotSettings();
-  await ctx.reply('✅ Buy-alert image saved.');
+  awaitingBuyMedia.set(ctx.from.id, 'photo');
+  await ctx.reply('📷 Now upload or send the image you want attached to every buy alert. Send it as a photo (not a URL).');
 });
 
 bot.command('setbuyvideo', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
-  const url = (ctx.message.text || '').trim().split(/\s+/).slice(1).join(' ');
-  if (!/^https?:\/\//i.test(url)) {
-    await ctx.reply('Usage: /setbuyvideo <https://video-url>');
+  awaitingBuyMedia.set(ctx.from.id, 'video');
+  await ctx.reply('🎥 Now upload or send the video you want attached to every buy alert. Send it as a video (not a URL).');
+});
+
+bot.on('photo', async (ctx) => {
+  if (awaitingBuyMedia.get(ctx.from.id) !== 'photo') return;
+  if (!await requireAdmin(ctx)) return;
+  const photos = ctx.message.photo || [];
+  const photo = photos[photos.length - 1];
+  if (!photo || !photo.file_id) {
+    await ctx.reply('I could not read that image. Please send it again as a photo.');
+    return;
+  }
+  botSettings.buyMediaType = 'photo';
+  botSettings.buyMediaFileId = photo.file_id;
+  awaitingBuyMedia.delete(ctx.from.id);
+  saveBotSettings();
+  await ctx.reply('✅ Buy-alert image saved. It will be attached to new buy alerts.');
+});
+
+bot.on('video', async (ctx) => {
+  if (awaitingBuyMedia.get(ctx.from.id) !== 'video') return;
+  if (!await requireAdmin(ctx)) return;
+  const video = ctx.message.video;
+  if (!video || !video.file_id) {
+    await ctx.reply('I could not read that video. Please send it again as a video.');
     return;
   }
   botSettings.buyMediaType = 'video';
-  botSettings.buyMediaUrl = url;
+  botSettings.buyMediaFileId = video.file_id;
+  awaitingBuyMedia.delete(ctx.from.id);
   saveBotSettings();
-  await ctx.reply('✅ Buy-alert video saved.');
+  await ctx.reply('✅ Buy-alert video saved. It will be attached to new buy alerts.');
 });
 
 bot.command('clearbuymedia', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
   botSettings.buyMediaType = null;
-  botSettings.buyMediaUrl = null;
+  botSettings.buyMediaFileId = null;
   saveBotSettings();
   await ctx.reply('✅ Buy-alert media cleared.');
 });
@@ -502,10 +520,10 @@ ${buyBadge}${isWhale ? `\n💎 Whale Wallet Balance: $${formatNumber(solBalanceU
     parse_mode: 'Markdown',
     ...keyboard,
   };
-  if (botSettings.buyMediaType === 'photo' && botSettings.buyMediaUrl) {
-    await bot.telegram.sendPhoto(chatId, botSettings.buyMediaUrl, options);
-  } else if (botSettings.buyMediaType === 'video' && botSettings.buyMediaUrl) {
-    await bot.telegram.sendVideo(chatId, botSettings.buyMediaUrl, options);
+  if (botSettings.buyMediaType === 'photo' && botSettings.buyMediaFileId) {
+    await bot.telegram.sendPhoto(chatId, botSettings.buyMediaFileId, options);
+  } else if (botSettings.buyMediaType === 'video' && botSettings.buyMediaFileId) {
+    await bot.telegram.sendVideo(chatId, botSettings.buyMediaFileId, options);
   } else {
     await bot.telegram.sendMessage(chatId, caption, {
       parse_mode: 'Markdown',
