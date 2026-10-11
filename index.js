@@ -440,6 +440,18 @@ async function getSolBalanceUsd(walletAddress) {
   }
 }
 
+function getBuyFrogLine(usdBuy) {
+  // Bigger buys get a longer frog line, making alert size scale with buy value.
+  const count = usdBuy >= 1000 ? 16
+    : usdBuy >= 500 ? 12
+    : usdBuy >= 100 ? 8
+    : usdBuy >= 50 ? 6
+    : usdBuy >= 10 ? 4
+    : usdBuy >= 5 ? 3
+    : 1;
+  return '🐸'.repeat(count);
+}
+
 function getBuyBadge(isWhale, usdBuy) {
   if (isWhale) return '🐳 WHALE BUY';
   if (usdBuy >= 100) return '🚀 BIG BUY';
@@ -490,7 +502,7 @@ ${isWhale ? `💵 Wallet Value: $${formatNumber(solBalanceUsd)}\n🐳 WHALE BUY\
     // history is actually verified; this monitor only observes recent transfers.
     caption = `
 🐸 *$MOIN Buy!*
-🐸🐸🐸🐸🐸🐸🐸🐸
+${getBuyFrogLine(usdSpent)}
 
 💵 $${usdSpent.toFixed(2)} (${solSpent.toFixed(3)} SOL)
 🏷 ${formatNumber(tokensReceived)} MOIN
