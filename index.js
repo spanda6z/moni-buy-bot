@@ -132,7 +132,7 @@ bot.action(/^menu:(price|lastbuy|status|help|admin)$/, async (ctx) => {
   const adminCommands = await isAdmin(ctx)
     ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
-  await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
+  await ctx.reply('Commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
 });
 
 
@@ -695,7 +695,7 @@ process.once('SIGTERM', () => bot.stop('SIGTERM'));
 });
 
 bot.help(async (ctx) => {
-  const adminCommands = isAdmin(ctx)
+  const adminCommands = await isAdmin(ctx)
     ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
@@ -731,7 +731,7 @@ bot.command('setalerttype', async (ctx) => {
 });
 
 bot.action(/^alerttype:(standard|detailed|whale)$/, async (ctx) => {
-  if (!isAdmin(ctx)) {
+  if (!await isAdmin(ctx)) {
     await ctx.answerCbQuery('Admin only.');
     return;
   }
