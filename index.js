@@ -128,13 +128,48 @@ bot.action(/^menu:(price|lastbuy|status|help|admin)$/, async (ctx) => {
 
   if (action === 'price') {
     await ctx.reply(
-      `📈 $MOIN Price: ${formatTokenPrice(moinPrice)}\nMarket cap/FDV: ${mcap == null ? 'Unavailable' : '
+      `📈 $MOIN Price: ${formatTokenPrice(moinPrice)}\nMarket cap/FDV: ${mcap == null ? 'Unavailable' : '$' + formatNumber(mcap)}\nSOL price: ${formatUsd(solPrice)}\nUpdated: ${ageLabel(moinPriceUpdatedAt)}\nSource: ${marketDataSource}`,
+      Markup.inlineKeyboard([[Markup.button.url('📊 View Chart', CHART_URL), Markup.button.url('💲 Buy $MOIN', BUY_URL)]])
+    );
+    return;
+  }
+
+  if (action === 'lastbuy') {
+    if (!lastBuy) {
+      await ctx.reply('No purchase has been detected yet. Buy monitoring requires a valid HELIUS_API_KEY in Railway.');
+      return;
+    }
+    await ctx.reply(formatLastBuy(lastBuy), {
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true,
+      ...Markup.inlineKeyboard([[Markup.button.url('🔎 View transaction', `https://solscan.io/tx/${lastBuy.signature}`), Markup.button.url('📊 Chart', CHART_URL)]]),
+    });
+    return;
+  }
+
+  if (action === 'status') {
+    await ctx.reply(`✅ Telegram bot is online\nSolana RPC: ${activeRpcName}\nSOL price: ${formatUsd(solPrice)} (${ageLabel(solPriceUpdatedAt)})\n$MOIN price: ${formatTokenPrice(moinPrice)} (${ageLabel(moinPriceUpdatedAt)})\nMarket data source: ${marketDataSource}`);
+    return;
+  }
+
+  if (action === 'help') {
+    await ctx.reply(await menuHelpText(ctx));
+    return;
+  }
+
+  if (!await requireAdmin(ctx)) return;
+  await ctx.reply(
+    `⚙️ Admin Settings\nCurrent minimum buy alert: $${botSettings.minBuyUsd}\nAlert style: ${botSettings.alertType}\nBuy media: ${botSettings.buyMediaType || 'None'}\n\nChoose alert style below or use a command:\n/setminbuy <USD>\n/setbuyimage <URL>\n/setbuyvideo <URL>\n/clearbuymedia`,
+    alertTypeKeyboard()
+  );
+});
+
+bot.help(async (ctx) => {
   const adminCommands = await isAdmin(ctx)
     ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage <URL> — set buy-alert image\n/setbuyvideo <URL> — set buy-alert video\n/clearbuymedia — remove buy-alert media'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
 });
-
 
 function alertTypeKeyboard() {
   return Markup.inlineKeyboard([[
