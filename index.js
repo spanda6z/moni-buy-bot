@@ -34,16 +34,17 @@ let buyMonitorInitialized = false;
 const seenBuySignatures = new Set();
 
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
-const DEFAULT_MIN_BUY_USD = Number(process.env.MIN_BUY_USD || 1);
+const DEFAULT_MIN_BUY_USD = Math.max(20, Number(process.env.MIN_BUY_USD || 20));
 const SETTINGS_FILE = path.join(__dirname, 'bot-settings.json');
-let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaFileId: null, alertType: 'standard' };
+let botSettings = { minBuyUsd: DEFAULT_MIN_BUY_USD, buyMediaType: null, buyMediaFileId: null, buyTopicId: null, alertType: 'standard' };
 const awaitingBuyMedia = new Map();
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
     const savedMinimum = Number(saved.minBuyUsd);
     botSettings = {
-      minBuyUsd: Number.isFinite(savedMinimum) && savedMinimum >= 0 ? savedMinimum : DEFAULT_MIN_BUY_USD,
+      minBuyUsd: Number.isFinite(savedMinimum) && savedMinimum >= 0 ? Math.max(20, savedMinimum) : DEFAULT_MIN_BUY_USD,
+      buyTopicId: Number.isInteger(Number(saved.buyTopicId)) && Number(saved.buyTopicId) > 0 ? Number(saved.buyTopicId) : null,
       buyMediaType: ['photo', 'video'].includes(saved.buyMediaType) ? saved.buyMediaType : null,
       buyMediaFileId: typeof saved.buyMediaFileId === 'string' && saved.buyMediaFileId.trim() ? saved.buyMediaFileId.trim() : null,
       alertType: ['standard', 'detailed', 'whale'].includes(saved.alertType) ? saved.alertType : 'standard',
@@ -114,7 +115,7 @@ function mainMenuKeyboard() {
 
 async function menuHelpText(ctx) {
   const adminCommands = await isAdmin(ctx)
-    ? '\n\nAdmin commands:\n/setminbuy <USD>\n/alerttype\n/setalerttype <standard|detailed|whale>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia'
+    ? '\n\nAdmin commands:\n/setminbuy <USD>\n/alerttype\n/setalerttype <standard|detailed|whale>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia\n/setbuytopic — run inside the destination topic\n/clearbuytopic'
     : '';
   return 'Available commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show commands\n/ping — Check response\n/status — Bot status\n/price — Latest cached prices\n/lastbuy — Latest detected purchase' + adminCommands;
 }
@@ -160,14 +161,14 @@ bot.action(/^menu:(price|lastbuy|status|help|admin)$/, async (ctx) => {
 
   if (!await requireAdmin(ctx)) return;
   await ctx.reply(
-    `⚙️ Admin Settings\nCurrent minimum buy alert: $${botSettings.minBuyUsd}\nAlert style: ${botSettings.alertType}\nBuy media: ${botSettings.buyMediaType || 'None'}\n\nChoose alert style below or use a command:\n/setminbuy <USD>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia`,
+    `⚙️ Admin Settings\nCurrent minimum buy alert: ${botSettings.minBuyUsd}\nAlert style: ${botSettings.alertType}\nBuy topic: ${botSettings.buyTopicId == null ? 'Group default (not set)' : botSettings.buyTopicId}\nBuy media: ${botSettings.buyMediaType || 'None'}\n\nChoose alert style below or use a command:\n/setminbuy <USD>\n/setbuyimage — then upload a photo\n/setbuyvideo — then upload a video\n/clearbuymedia`,
     alertTypeKeyboard()
   );
 });
 
 bot.help(async (ctx) => {
   const adminCommands = await isAdmin(ctx)
-    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage — then upload a photo — set buy-alert image\n/setbuyvideo — then upload a video — set buy-alert video\n/clearbuymedia — remove buy-alert media'
+    ? '\nAdmin: /setminbuy <USD> — set minimum buy alert threshold\n/alerttype — choose the buy-alert style\n/setalerttype <standard|detailed|whale> — set alert style directly\n/setbuyimage — then upload a photo — set buy-alert image\n/setbuyvideo — then upload a video — set buy-alert video\n/clearbuymedia — remove buy-alert media\n/setbuytopic — run inside the destination topic\n/clearbuytopic — send alerts to the group default'
     : '';
   await ctx.reply('Commands:\n/start — Start the bot\n/menu — Open the button menu\n/help — Show this help\n/ping — Check whether the bot responds\n/status — Check service status\n/price — Show the latest cached $moin and SOL prices\n/lastbuy — Show the latest detected MOIN purchase' + adminCommands);
 });
@@ -214,13 +215,32 @@ bot.action(/^alerttype:(standard|detailed|whale)$/, async (ctx) => {
 bot.command('setminbuy', async (ctx) => {
   if (!await requireAdmin(ctx)) return;
   const amount = Number((ctx.message.text || '').split(/\s+/)[1]);
-  if (!Number.isFinite(amount) || amount < 0) {
-    await ctx.reply('Usage: /setminbuy <USD>\nExample: /setminbuy 5');
+  if (!Number.isFinite(amount) || amount < 20) {
+    await ctx.reply('Usage: /setminbuy <USD>\nMinimum allowed by the current configuration is $20. Example: /setminbuy 20');
     return;
   }
   botSettings.minBuyUsd = amount;
   saveBotSettings();
   await ctx.reply(`✅ Minimum buy threshold set to ${amount}. Buy alerts below this USD amount will be ignored.`);
+});
+
+bot.command('setbuytopic', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  const topicId = ctx.message && ctx.message.message_thread_id;
+  if (!topicId) {
+    await ctx.reply('Open the Telegram forum topic where buy alerts should appear, then run /setbuytopic inside that topic. I will save that topic as the buy-alert destination.');
+    return;
+  }
+  botSettings.buyTopicId = Number(topicId);
+  saveBotSettings();
+  await ctx.reply(`✅ Buy alerts will now be sent to this topic (ID: ${topicId}).`);
+});
+
+bot.command('clearbuytopic', async (ctx) => {
+  if (!await requireAdmin(ctx)) return;
+  botSettings.buyTopicId = null;
+  saveBotSettings();
+  await ctx.reply('✅ Buy-topic override cleared. Buy alerts will use the group default destination.');
 });
 
 bot.command('setbuyimage', async (ctx) => {
@@ -528,7 +548,9 @@ ${getBuyFrogLine(usdSpent)}
     timestamp: Date.now(),
   };
   const chatId = process.env.TELEGRAM_CHAT_ID;
+  const topicOptions = botSettings.buyTopicId == null ? {} : { message_thread_id: botSettings.buyTopicId };
   const options = {
+    ...topicOptions,
     caption,
     parse_mode: 'Markdown',
     ...keyboard,
@@ -539,6 +561,7 @@ ${getBuyFrogLine(usdSpent)}
     await bot.telegram.sendVideo(chatId, botSettings.buyMediaFileId, options);
   } else {
     await bot.telegram.sendMessage(chatId, caption, {
+      ...topicOptions,
       parse_mode: 'Markdown',
       disable_web_page_preview: true,
       ...keyboard,
