@@ -32,6 +32,8 @@ let lastBuy = null;
 let latestTransactionSignature = null;
 let buyMonitorInitialized = false;
 const seenBuySignatures = new Set();
+let nextBuyMonitorAttemptAt = 0;
+let lastBuyMonitorRateLimitLogAt = 0;
 
 const WHALE_SOL_USD = Number(process.env.WHALE_SOL_USD || 30000);
 const DEFAULT_MIN_BUY_USD = Math.max(20, Number(process.env.MIN_BUY_USD || 20));
@@ -585,6 +587,7 @@ function formatLastBuy(buy) {
 }
 
 async function checkBuys() {
+  if (Date.now() < nextBuyMonitorAttemptAt) return;
   if (!HELIUS_API_KEY) {
     console.warn('Buy monitoring disabled: set HELIUS_API_KEY to enable enhanced Solana transaction monitoring.');
     return;
@@ -637,7 +640,18 @@ async function checkBuys() {
     }
     if (seenBuySignatures.size > 1000) seenBuySignatures.clear();
   } catch (err) {
-    console.error('Buy monitoring error:', err.message);
+    const statusMatch = String(err.message || '').match(/HTTP (\\d{3})/);
+    const statusCode = statusMatch ? Number(statusMatch[1]) : 0;
+    if (statusCode === 429) {
+      // Back off after provider throttling rather than hammering Helius every 15 seconds.
+      nextBuyMonitorAttemptAt = Date.now() + 60_000;
+      if (Date.now() - lastBuyMonitorRateLimitLogAt > 60_000) {
+        console.error('Helius is rate limiting buy monitoring (HTTP 429). Pausing retries for 60 seconds; check Helius quota/plan if this continues.');
+        lastBuyMonitorRateLimitLogAt = Date.now();
+      }
+    } else {
+      console.error('Buy monitoring error:', err.message);
+    }
   }
 }
 
